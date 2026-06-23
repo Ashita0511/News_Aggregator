@@ -1,14 +1,12 @@
 import firebase_admin
-from firebase_admin import credentials
 from firebase_admin import firestore
+from google.cloud import firestore as google_firestore
 import hashlib
+import os
 
 # 1. Initialize the Firebase Admin SDK 
 if not firebase_admin._apps:
     firebase_admin.initialize_app()
-
-# Connect to the Firestore client
-db = firestore.client(database_id="firestore01")
 
 def push_to_firestore(df, collection_name="articles"):
     """
@@ -21,6 +19,13 @@ def push_to_firestore(df, collection_name="articles"):
 
     print(f"\n☁️ Pushing {len(df)} articles to Firestore collection: '{collection_name}'...")
     
+    database_id = os.environ.get("FIRESTORE_DATABASE_ID", "firestore01")
+
+    try:
+        db = firestore.client(database_id=database_id)
+    except TypeError:
+        db = google_firestore.Client(database=database_id)
+
     # Reference to your specific collection
     collection_ref = db.collection(collection_name)
     
