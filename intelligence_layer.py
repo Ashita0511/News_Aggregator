@@ -2,10 +2,40 @@ import os
 import json
 import time
 import pandas as pd
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 
-# Configure the API key from your environment variables
-genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
+ALLOWED_SENTIMENTS = {
+    "🚀 Emerging/Learn Next",
+    "⚠️ Declining/Deprecating",
+    "Neutral",
+}
+
+RESPONSE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "Extracted_Tech": {
+            "type": "string",
+            "description": "Comma-separated tools or technologies mentioned.",
+        },
+        "Sentiment": {
+            "type": "string",
+            "enum": list(ALLOWED_SENTIMENTS),
+        },
+        "Summary": {
+            "type": "string",
+            "description": "A concise 2-sentence TL;DR of the article.",
+        },
+    },
+    "required": ["Extracted_Tech", "Sentiment", "Summary"],
+}
+
+def get_gemini_client():
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        raise RuntimeError("GEMINI_API_KEY is not set.")
+
+    return genai.Client(api_key=api_key)
 
 def process_with_llm(raw_text):
     """
@@ -34,19 +64,29 @@ def process_with_llm(raw_text):
     {raw_text}
     """
 
-    # We use gemini-1.5-flash as it is the fastest and most cost-effective for text processing tasks
-    model = genai.GenerativeModel('gemini-2.5-flash')
-    
     try:
         # 2. Call the LLM
-        response = model.generate_content(prompt)
+        client = get_gemini_client()
+        response = client.models.generate_content(
+            model=os.environ.get("GEMINI_MODEL", "gemini-2.5-flash"),
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema=RESPONSE_SCHEMA,
+            ),
+        )
         
         # 3. Clean and parse the JSON output
         clean_json = response.text.replace('```json', '').replace('```', '').strip()
-        return json.loads(clean_json)
+        result = json.loads(clean_json)
+
+        if result.get("Sentiment") not in ALLOWED_SENTIMENTS:
+            result["Sentiment"] = "Neutral"
+
+        return result
         
     except Exception as e:
-        print(f"⚠️ Error processing text with LLM: {e}")
+        print(f"⚠️ Error processing text with LLM: {type(e).__name__}: {e}")
         # Fallback schema to prevent pipeline failure
         return {
             "Extracted_Tech": "Processing Error",

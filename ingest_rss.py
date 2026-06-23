@@ -1,9 +1,12 @@
-from database import push_to_firestore
-from intelligence_layer import enrich_dataframe
 import feedparser
 import pandas as pd
 import requests
 from datetime import datetime
+
+FEEDS = [
+    ("https://medium.com/feed/tag/data-engineering", "Medium (Data Engineering)"),
+    ("https://www.reddit.com/r/dataengineering/.rss", "r/dataengineering"),
+]
 
 def fetch_data_engineering_news(rss_url, source_name):
     """
@@ -58,16 +61,23 @@ def fetch_data_engineering_news(rss_url, source_name):
         # Return an empty dataframe with the correct schema to keep the pipeline running
         return pd.DataFrame(columns=expected_columns)
 
+def fetch_news():
+    """
+    Fetches all configured RSS feeds and returns one combined DataFrame.
+    """
+    feed_frames = [
+        fetch_data_engineering_news(rss_url, source_name)
+        for rss_url, source_name in FEEDS
+    ]
+
+    return pd.concat(feed_frames, ignore_index=True)
+
 # --- TEST THE INGESTION SCRIPT ---
 if __name__ == "__main__":
-    medium_url = "https://medium.com/feed/tag/data-engineering"
-    medium_df = fetch_data_engineering_news(medium_url, "Medium (Data Engineering)")
-    
-    reddit_url = "https://www.reddit.com/r/dataengineering/.rss"
-    reddit_df = fetch_data_engineering_news(reddit_url, "r/dataengineering")
-    
-    # Combine the dataframes
-    final_df = pd.concat([medium_df, reddit_df], ignore_index=True)
+    from database import push_to_firestore
+    from intelligence_layer import enrich_dataframe
+
+    final_df = fetch_news()
     
     print("\n--- Successfully Ingested Articles ---")
     
